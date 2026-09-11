@@ -1,0 +1,69 @@
+name: Release qemu-system-arm
+
+on:
+  push:
+    tags:
+      - '[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            meson \
+            pkg-config \
+            libglib2.0-dev \
+            libpixman-1-dev \
+            libslirp-dev \
+            zlib1g-dev \
+            flex \
+            bison
+
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          ../configure --target-list=arm-softmmu --python="$(command -v python3.12)" --enable-fdt=internal
+
+      - name: Build
+        run: |
+          cd build
+          ninja -j"$(nproc)"
+
+      - name: Package artifact
+        id: package
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          DIST="qemu-system-arm-${VERSION}-ubuntu22.04-x86_64"
+          mkdir -p "${DIST}"
+          cp build/qemu-system-arm "${DIST}/"
+          cp -r build/pc-bios "${DIST}/"
+          tar czf "${DIST}.tar.gz" "${DIST}"
+          sha256sum "${DIST}.tar.gz" > "${DIST}.tar.gz.sha256"
+          echo "archive=${DIST}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "checksum=${DIST}.tar.gz.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            "${{ steps.package.outputs.archive }}" \
+            "${{ steps.package.outputs.checksum }}"
