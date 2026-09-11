@@ -29,6 +29,7 @@
 #include "hw/arm/stm32f405_soc.h"
 #include "hw/core/qdev-clock.h"
 #include "hw/misc/unimp.h"
+#include "net/net.h"
 
 #define RCC_ADDR                       0x40023800
 #define SYSCFG_ADD                     0x40013800
@@ -45,6 +46,8 @@ static const uint32_t spi_addr[] =   { 0x40013000, 0x40003800, 0x40003C00,
 #define EXTI_ADDR                      0x40013C00
 
 #define SYSCFG_IRQ               71
+#define ETH_ADDR                       0x40028000
+#define ETH_IRQ                  61
 static const int usart_irq[] = { 37, 38, 39, 52, 53, 71, 82, 83 };
 static const int timer_irq[] = { 28, 29, 30, 50 };
 #define ADC_IRQ 18
@@ -83,6 +86,8 @@ static void stm32f405_soc_initfn(Object *obj)
     }
 
     object_initialize_child(obj, "exti", &s->exti, TYPE_STM32F4XX_EXTI);
+
+    object_initialize_child(obj, "eth", &s->eth, TYPE_STM32F4XX_ETH);
 
     s->sysclk = qdev_init_clock_in(DEVICE(s), "sysclk", NULL, NULL, 0);
     s->refclk = qdev_init_clock_in(DEVICE(s), "refclk", NULL, NULL, 0);
@@ -254,6 +259,16 @@ static void stm32f405_soc_realize(DeviceState *dev_soc, Error **errp)
         qdev_connect_gpio_out(DEVICE(&s->syscfg), i, qdev_get_gpio_in(dev, i));
     }
 
+    /* Ethernet MAC */
+    dev = DEVICE(&s->eth);
+    qemu_configure_nic_device(dev, false, NULL);
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->eth), errp)) {
+        return;
+    }
+    busdev = SYS_BUS_DEVICE(dev);
+    sysbus_mmio_map(busdev, 0, ETH_ADDR);
+    sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, ETH_IRQ));
+
     create_unimplemented_device("timer[7]",    0x40001400, 0x400);
     create_unimplemented_device("timer[12]",   0x40001800, 0x400);
     create_unimplemented_device("timer[6]",    0x40001000, 0x400);
@@ -291,7 +306,6 @@ static void stm32f405_soc_realize(DeviceState *dev_soc, Error **errp)
     create_unimplemented_device("BKPSRAM",     0x40024000, 0x400);
     create_unimplemented_device("DMA1",        0x40026000, 0x400);
     create_unimplemented_device("DMA2",        0x40026400, 0x400);
-    create_unimplemented_device("Ethernet",    0x40028000, 0x1400);
     create_unimplemented_device("USB OTG HS",  0x40040000, 0x30000);
     create_unimplemented_device("USB OTG FS",  0x50000000, 0x31000);
     create_unimplemented_device("DCMI",        0x50050000, 0x400);
